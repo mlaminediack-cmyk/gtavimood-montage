@@ -22,13 +22,38 @@ else
   ffmpeg -y -stream_loop "$LOOP" -i src.mp4 -f lavfi -i anullsrc=r=48000:cl=stereo -vf "$VF" -map 0:v -map 1:a -shortest -c:v libx264 -preset veryfast -crf 23 -c:a aac main.mp4
 fi
 
+# Outro texte par defaut (secours + fichier NAME.mp4)
 ffmpeg -y -f lavfi -i "color=c=black:s=${W}x${H}:d=3:r=30" -f lavfi -i anullsrc=r=48000:cl=stereo -t 3 \
   -vf "drawtext=fontfile=${FONT}:textfile=outro.txt:fontsize=$((FS+14)):fontcolor=0xFF4FA3:borderw=3:bordercolor=black:x=(w-text_w)/2:y=(h-text_h)/2,format=yuv420p" \
   -c:v libx264 -preset veryfast -crf 23 -c:a aac -ar 48000 -ac 2 -shortest outro.mp4
 
 printf "file 'main.mp4'\nfile 'outro.mp4'\n" > list.txt
 ffmpeg -y -f concat -safe 0 -i list.txt -c copy "${NAME}.mp4"
+ASSETS="${NAME}.mp4"
+
+# Outros VARIEES : une outro tiree au hasard par plateforme (yt, ig, tt), liste dans outros_<p>.txt (IDs Drive)
+build_outro () {
+  P="$1"; LST="outros_${P}.txt"
+  [ -s "$LST" ] || return 1
+  OID=$(tr -d '\r' < "$LST" | grep -v '^$' | shuf -n1)
+  rm -f "o_${P}.mp4" "on_${P}.mp4"
+  gdown "https://drive.google.com/uc?id=${OID}" -O "o_${P}.mp4" || return 1
+  [ -s "o_${P}.mp4" ] || return 1
+  OHASA=$(ffprobe -v error -select_streams a -show_entries stream=codec_type -of csv=p=0 "o_${P}.mp4" | head -1 || true)
+  OVF="scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30,format=yuv420p"
+  if [ -n "$OHASA" ]; then
+    ffmpeg -y -t 8 -i "o_${P}.mp4" -vf "$OVF" -c:v libx264 -preset veryfast -crf 23 -c:a aac -ar 48000 -ac 2 "on_${P}.mp4" || return 1
+  else
+    ffmpeg -y -t 8 -i "o_${P}.mp4" -f lavfi -i anullsrc=r=48000:cl=stereo -vf "$OVF" -map 0:v -map 1:a -shortest -c:v libx264 -preset veryfast -crf 23 -c:a aac "on_${P}.mp4" || return 1
+  fi
+  printf "file 'main.mp4'\nfile 'on_%s.mp4'\n" "$P" > "list_${P}.txt"
+  ffmpeg -y -f concat -safe 0 -i "list_${P}.txt" -c copy "${NAME}_${P}.mp4" || return 1
+  echo "outro ${P}: ${OID}"
+}
+for P in yt ig tt; do
+  if build_outro "$P"; then ASSETS="$ASSETS ${NAME}_${P}.mp4"; else echo "outro ${P} indisponible, on garde l'outro texte"; fi
+done
 
 gh release delete "$NAME" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
-gh release create "$NAME" "${NAME}.mp4" --repo "$GITHUB_REPOSITORY" --title "$NAME" --notes "Montage GTA VI MOOD"
+gh release create "$NAME" $ASSETS --repo "$GITHUB_REPOSITORY" --title "$NAME" --notes "Montage GTA VI MOOD"
 echo "URL: https://github.com/${GITHUB_REPOSITORY}/releases/download/${NAME}/${NAME}.mp4"
