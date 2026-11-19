@@ -1,7 +1,7 @@
 name: montage
 on:
   schedule:
-    - cron: '0 7,11,15 * * *'
+    - cron: '10 * * * *'
   workflow_dispatch:
     inputs:
       drive_id:
@@ -22,9 +22,13 @@ on:
       outro:
         description: 'Outro'
         default: '@gtavimood'
+concurrency:
+  group: montage
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     permissions:
       contents: write
     env:
@@ -43,15 +47,13 @@ jobs:
             bash make.sh "$IN_ID" "$IN_NAME" "${IN_FMT:-vertical}" "${IN_CAP:-GTA VI MOOD}" "${IN_MIN:-0}" "${IN_OUTRO:-@gtavimood}"
             exit 0
           fi
-          pip install --quiet gdown || true
-          gdown "https://drive.google.com/uc?id=1HkGdSBziYGxv5hKEw9lnsbLx9hXdzuVH" -O queue_drive.txt || echo "gdown KO, queue du repo"
-          if [ -s queue_drive.txt ]; then cp queue_drive.txt queue.txt; fi
           tr -d '\r' < queue.txt > q.txt
-          n=0
+          ok=0; tries=0
           while IFS='|' read -r id name fmt cap min; do
             [ -z "$id" ] && continue
             if gh release view "$name" >/dev/null 2>&1; then continue; fi
-            bash make.sh "$id" "$name" "$fmt" "$cap" "$min" "@gtavimood" || echo "echec $name"
-            n=$((n+1))
-            [ "$n" -ge 3 ] && break
+            tries=$((tries+1))
+            if bash make.sh "$id" "$name" "$fmt" "$cap" "$min" "@gtavimood"; then ok=$((ok+1)); else echo "echec $name"; fi
+            [ "$ok" -ge 3 ] && break
+            [ "$tries" -ge 6 ] && break
           done < q.txt
