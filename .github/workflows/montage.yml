@@ -44,16 +44,32 @@ jobs:
       - name: Lancer
         run: |
           if [ -n "$IN_ID" ]; then
-            bash make.sh "$IN_ID" "$IN_NAME" "${IN_FMT:-vertical}" "${IN_CAP:-GTA VI MOOD}" "${IN_MIN:-0}" "${IN_OUTRO:-@gtavimood}"
+            bash make.sh "$IN_ID" "$IN_NAME" "${IN_FMT:-vertical}" "${IN_CAP:-GTA VI MOOD}" "${IN_MIN:-0}" "${IN_OUTRO:-@gtavimood}" < /dev/null
             exit 0
           fi
+          pip install --quiet --break-system-packages gdown || pip install --quiet gdown || true
           tr -d '\r' < queue.txt > q.txt
+          echo >> q.txt
+          python3 - >> q.txt <<'PY' || true
+          import gdown, re, sys
+          try:
+              fs = gdown.download_folder(id='1H1i8bOLUnWDdUmbXv966dndTnZSZXpbA', skip_download=True, quiet=True, use_cookies=False)
+              for f in (fs or []):
+                  p = f.path
+                  low = p.lower()
+                  if 'leak' in low or 'savetube' in low or 'videoplayback' in low or not low.endswith('.mp4'):
+                      continue
+                  n = re.sub(r'[^A-Za-z0-9]', '', p.rsplit('.', 1)[0])
+                  print(f'{f.id}|h_{n}|vertical|GTA VI MOOD|0')
+          except Exception as e:
+              print('liste dossier KO', e, file=sys.stderr)
+          PY
           ok=0; tries=0
-          while IFS='|' read -r id name fmt cap min; do
+          while IFS='|' read -r id name fmt cap min <&3; do
             [ -z "$id" ] && continue
             if gh release view "$name" >/dev/null 2>&1; then continue; fi
             tries=$((tries+1))
-            if bash make.sh "$id" "$name" "$fmt" "$cap" "$min" "@gtavimood"; then ok=$((ok+1)); else echo "echec $name"; fi
+            if bash make.sh "$id" "$name" "$fmt" "$cap" "$min" "@gtavimood" < /dev/null; then ok=$((ok+1)); else echo "echec $name"; fi
             [ "$ok" -ge 3 ] && break
             [ "$tries" -ge 6 ] && break
-          done < q.txt
+          done 3< q.txt
