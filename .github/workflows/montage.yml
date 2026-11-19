@@ -1,0 +1,57 @@
+name: montage
+on:
+  schedule:
+    - cron: '0 7,11,15 * * *'
+  workflow_dispatch:
+    inputs:
+      drive_id:
+        description: 'ID Drive du clip'
+        required: false
+      name:
+        description: 'Nom'
+        required: false
+      format:
+        description: 'Format'
+        default: 'vertical'
+      caption:
+        description: 'Legende'
+        default: 'GTA VI MOOD'
+      min_seconds:
+        description: 'Duree min'
+        default: '0'
+      outro:
+        description: 'Outro'
+        default: '@gtavimood'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      IN_ID: ${{ inputs.drive_id }}
+      IN_NAME: ${{ inputs.name }}
+      IN_FMT: ${{ inputs.format }}
+      IN_CAP: ${{ inputs.caption }}
+      IN_MIN: ${{ inputs.min_seconds }}
+      IN_OUTRO: ${{ inputs.outro }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lancer
+        run: |
+          if [ -n "$IN_ID" ]; then
+            bash make.sh "$IN_ID" "$IN_NAME" "${IN_FMT:-vertical}" "${IN_CAP:-GTA VI MOOD}" "${IN_MIN:-0}" "${IN_OUTRO:-@gtavimood}"
+            exit 0
+          fi
+          pip install --quiet gdown || true
+          gdown "https://drive.google.com/uc?id=1HkGdSBziYGxv5hKEw9lnsbLx9hXdzuVH" -O queue_drive.txt || echo "gdown KO, queue du repo"
+          if [ -s queue_drive.txt ]; then cp queue_drive.txt queue.txt; fi
+          tr -d '\r' < queue.txt > q.txt
+          n=0
+          while IFS='|' read -r id name fmt cap min; do
+            [ -z "$id" ] && continue
+            if gh release view "$name" >/dev/null 2>&1; then continue; fi
+            bash make.sh "$id" "$name" "$fmt" "$cap" "$min" "@gtavimood" || echo "echec $name"
+            n=$((n+1))
+            [ "$n" -ge 3 ] && break
+          done < q.txt
